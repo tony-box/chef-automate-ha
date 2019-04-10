@@ -136,7 +136,7 @@ _mountFilesystemForChefBackend() {
         info "Mounting the /var/opt/chef-backend filesystem"
         yum install -y lvm2 xfsprogs sysstat atop
         umount -f /mnt
-        pvcreate -f /dev/sdc
+        pvcreate -f /dev/sdc 2>&1
         vgcreate chef-vg /dev/sdc
         lvcreate -n chef-lv -l 80%VG chef-vg
         mkfs.xfs /dev/chef-vg/chef-lv
