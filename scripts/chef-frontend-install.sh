@@ -79,10 +79,10 @@ cleanup() {
 }
 
 # since jq is used to parse arguments, make sure it's installed before proceeding
-jqPackage=""; jqPackage=$( (dpkg-query -l jq) || echo "failed")
+jqPackage=""; jqPackage=$( (yum list installed jq) || echo "failed")
 if [[ "${jqPackage}" == "failed" ]]; then
     info "Installing jq because its required for parsing input arguments"
-    apt-get install -y jq
+    yum install -y -q jq
 else
     info "jq already installed"
 fi
@@ -93,9 +93,9 @@ ENCODED_ARGS=""
 ARG_FILE=""
 JSON_SUM_OF_ALL_ARGS="{}"
 # initialize variables
-CHEF_SERVER_PUBLIC_DNS=""
-CHEF_AUTOMATE_PUBLIC_DNS=""
-appID=""
+#CHEF_SERVER_PUBLIC_DNS=""
+#CHEF_AUTOMATE_PUBLIC_DNS=""
+#appID=""
 chefServerOrganization=""
 chefServerUser="delivery"
 dbPassword=""
@@ -105,7 +105,7 @@ keyVaultName=""
 lastName=""
 objectId=""
 password=""
-tenantID=""
+#tenantID=""
 thisServerIsTheLeader="false"
 while (( "$#" )); do
   case "$1" in
@@ -201,21 +201,26 @@ if [[ "$thisServerIsTheLeader" == "" ]]; then fatal "thisServerIsTheLeader must 
 # --- Helper scripts end ---
 
 _installPreRequisitePackages() {
-    apt-get install -y apt-transport-https
-    apt-get install -y sshpass
-    apt-get install -y libssl-dev libffi-dev python-dev build-essential
-    apt-get install -y jq
+    yum install -y -q sshpass
+    yum install -y -q openssl-devel libffi-devel python-devel gcc gcc-c++ make
+    yum install -y -q jq
+}
+
+_setupPreRequisiteServices() {
+  systemctl stop firewalld
+  systemctl disable firewalld
+  systemctl start ntpd
+  systemctl enable ntpd
 }
 
 _installChefFrontendSoftware() {
     local result=""
-    (dpkg-query -l chef-server-core && dpkg-query -l chef-manage) || result="failed"
+    (yum list installed chef-server-core && yum list installed chef-manage) || result="failed"
     if [[ "${result}" == "failed" ]]; then
         info "Installing chef-server-core and chef-manage"
-        wget -qO - https://downloads.chef.io/packages-chef-io-public.key | sudo apt-key add -
-        echo "deb https://packages.chef.io/stable-apt trusty main" > /etc/apt/sources.list.d/chef-stable.list
-        apt-get update
-        apt-get install -y chef-server-core chef-manage
+        rpm --import https://downloads.chef.io/packages-chef-io-public.key
+        yum-config-manager --add-repo https://packages.chef.io/repos/yum/stable/el/7/x86_64/
+        yum install -y chef-server-core chef-manage
     else
         info "chef-server-core and chef-manage already installed"
     fi
@@ -225,9 +230,8 @@ _mountFilesystemForChefFrontend() {
     local result=$(lvdisplay -v chef-vg || echo "not mounted")
     if [[ "${result}" == "not mounted" ]]; then
         info "Mounting the /var/opt/opscode and /var/log/opscode filesystems"
-        apt-get install -y lvm2 xfsprogs sysstat atop
-        apt-get update
-        umount -f /mnt || info "/mnt already umounted"
+        yum install -y -q lvm2 xfsprogs sysstat atop
+        umount -f /mnt > /dev/null 2>&1 || /bin/true || echo "umount failed, probably doesnt exist yet"
         pvcreate -f /dev/sdc
         vgcreate chef-vg /dev/sdc
         lvcreate -n chef-data -l 20%VG chef-vg
@@ -244,19 +248,17 @@ _mountFilesystemForChefFrontend() {
 }
 
 _installAzureCli() {
-    local result=""
-    (dpkg-query -l azure-cli ) || result="failed"
-    if [[ "${result}" == "failed" ]]; then
-        info "Installing azure-cli"
-        AZ_REPO=$(lsb_release -cs)
-        echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ ${AZ_REPO} main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
-        curl -L https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-        apt-get update
-        apt-get install -y azure-cli
-    else
-        info "azure-cli already installed"
-    fi
-    return
+   local result=""
+   (yum list installed azure-cli ) || result="failed"
+   if [[ "${result}" == "failed" ]]; then
+      info "Installing azure-cli"
+      rpm --import https://packages.microsoft.com/keys/microsoft.asc
+      sh -c 'echo -e "[azure-cli]\nname=Azure CLI\nbaseurl=https://packages.microsoft.com/yumrepos/azure-cli\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" > /etc/yum.repos.d/azure-cli.repo'
+      yum install -y -q azure-cli
+   else
+       info "azure-cli already installed"
+   fi
+   return
 }
 
 _getChefServerConfigText() {
@@ -267,7 +269,7 @@ _getChefServerConfigText() {
 		api_fqdn "${CHEF_SERVER_PUBLIC_DNS}"
 
 		use_chef_backend true
-		chef_backend_members ["10.0.1.6", "10.0.1.5", "10.0.1.4"]
+		chef_backend_members ["10.4.0.105", "10.4.0.106", "10.4.0.107"]
 
 		haproxy['remote_postgresql_port'] = 5432
 		haproxy['remote_elasticsearch_port'] = 9200
@@ -339,8 +341,8 @@ _doAChefReconfigure() {
 }
 
 _enableSystat() {
-    echo 'ENABLED="true"' > /etc/default/sysstat
-    service sysstat restart
+    systemctl enable sysstat
+    systemctl restart sysstat
     sleep 5
 }
 
@@ -466,6 +468,7 @@ fqdn=$(hostname -f)
 if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
     trap cleanup EXIT
     _installPreRequisitePackages
+    _setupPreRequisiteServices
     _installChefFrontendSoftware
     _mountFilesystemForChefFrontend
     _installAzureCli
@@ -493,4 +496,3 @@ if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
         _enableSystat
     fi
 fi
-
