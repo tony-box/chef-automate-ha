@@ -118,6 +118,13 @@ _installPreRequisitePackages() {
     yum install -y -q jq crontabs ntp
 }
 
+_setupPreRequisiteServices() {
+  systemctl stop firewalld
+  systemctl disable firewalld
+  systemctl start ntpd
+  systemctl enable ntpd
+}
+
 _installChefBackendSoftware() {
     local result=""
     (yum list installed chef-backend) || result="failed"
@@ -214,6 +221,7 @@ mkdir -p "${DELIVERY_DIR}"
 if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
     trap cleanup EXIT
     _installPreRequisitePackages
+    _setupPreRequisiteServices
     _installChefBackendSoftware
     _mountFilesystemForChefBackend
     _createBackendSecretsConfigFile
