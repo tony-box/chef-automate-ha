@@ -141,7 +141,7 @@ _installChefBackendSoftware() {
 _mountFilesystemForChefBackend() {
     if [[ ! -e "/var/opt/chef-backend" ]]; then
         info "Mounting the /var/opt/chef-backend filesystem"
-        yum install -y lvm2 xfsprogs sysstat atop
+        yum install -y -q lvm2 xfsprogs sysstat atop
         umount -f /mnt > /dev/null 2>&1 || /bin/true || echo "umount failed, probably doesnt exist yet"
         pvcreate -f /dev/sdc
         vgcreate chef-vg /dev/sdc
@@ -184,7 +184,6 @@ _createBackendNetworkConfigFile() {
 		publish_address '${IP}'
 		postgresql.log_min_duration_statement = 500
 		elasticsearch.heap_size = 3500
-		postgresql.md5_auth_cidr_addresses = ["samehost", "samenet", "10.0.0.0/24"]
 		EOF
 }
 
