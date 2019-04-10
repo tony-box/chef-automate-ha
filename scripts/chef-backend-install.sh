@@ -115,19 +115,17 @@ done
 # --- Helper scripts end ---
 
 _installPreRequisitePackages() {
-    apt-get install -y apt-transport-https
-    apt-get install -y jq
+    yum install -y -q jq crontabs ntp
 }
 
 _installChefBackendSoftware() {
     local result=""
-    (dpkg-query -l chef-backend) || result="failed"
+    (yum list installed chef-backend) || result="failed"
     if [[ "${result}" == "failed" ]]; then
         info "Installing chef-backend"
-        wget -qO - https://downloads.chef.io/packages-chef-io-public.key | sudo apt-key add -
-        echo "deb https://packages.chef.io/stable-apt trusty main" > /etc/apt/sources.list.d/chef-stable.list
-        apt-get update
-        apt-get install -y chef-backend
+        rpm --import https://downloads.chef.io/packages-chef-io-public.key
+        yum-config-manager --add-repo https://packages.chef.io/repos/yum/stable/el/7/x86_64/
+        yum install -y chef-backend
     else
         info "chef-backend already installed"
     fi
@@ -136,7 +134,7 @@ _installChefBackendSoftware() {
 _mountFilesystemForChefBackend() {
     if [[ ! -e "/var/opt/chef-backend" ]]; then
         info "Mounting the /var/opt/chef-backend filesystem"
-        apt-get install -y lvm2 xfsprogs sysstat atop
+        yum install -y lvm2 xfsprogs sysstat atop
         umount -f /mnt
         pvcreate -f /dev/sdc
         vgcreate chef-vg /dev/sdc
@@ -174,7 +172,7 @@ _createBackendSecretsConfigFile() {
 
 _createBackendNetworkConfigFile() {
 	info "Creating chef-backend.rb network config file"
-	IP=$( ifconfig eth0 | awk '/inet addr/{print substr($2,6)}' )
+	IP=$( ifconfig eth0 | awk '/inet /{print $2}' )
 	cat > "${DELIVERY_DIR}/chef-backend.rb" <<-EOF
 		publish_address '${IP}'
 		postgresql.log_min_duration_statement = 500
